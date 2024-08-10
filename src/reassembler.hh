@@ -1,6 +1,11 @@
 #pragma once
 
 #include "byte_stream.hh"
+#include <cstdint>
+#include <list>
+#include <string>
+#include <tuple>
+#include <vector>
 
 class Reassembler
 {
@@ -42,4 +47,9 @@ public:
 
 private:
   ByteStream output_; // the Reassembler writes to this ByteStream
+
+  uint64_t reassemble_header_idx { 0 }; // if first_index < output_tail_idx_, try to push
+  bool recv_eof { false };
+  uint64_t eof_idx { 0 };
+  std::list<std::tuple<std::string, uint64_t, uint64_t>> data_unassembled_ {}; // data + begin indx + end idx
 };
