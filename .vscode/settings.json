@@ -1,0 +1,5 @@
+{
+	"cmake.configureArgs": [
+		"-DCMAKE_CXX_FLAGS:STRING=-pthread"
+	]
+}
