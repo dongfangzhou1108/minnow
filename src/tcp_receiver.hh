@@ -27,4 +27,12 @@ public:
 
 private:
   Reassembler reassembler_;
+
+  Wrap32 isn_ { 0 };
+  uint64_t stream_length_ { 0 }; // 数据流长度
+  uint64_t checkpoint_ { 0 };
+  bool ackno_enable_ { false };
+  Wrap32 ackno_ { 0 };
+  uint16_t window_size_ { UINT16_MAX };
+  bool rst_enable_ { false };
 };

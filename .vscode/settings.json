@@ -1,5 +1,10 @@
 {
 	"cmake.configureArgs": [
 		"-DCMAKE_CXX_FLAGS:STRING=-pthread"
-	]
+	],
+	"cmake.buildArgs": [
+		"--target format",
+		"--target check2"
+	],
+	"editor.fontSize": 18
 }
