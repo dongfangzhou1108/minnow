@@ -1,8 +1,8 @@
 /*
  * @Author: 18746061711@163.com 18746061711@163.com
  * @Date: 2024-10-21 18:39:29
- * @LastEditors: 18746061711@163.com 18746061711@163.com
- * @LastEditTime: 2024-10-26 17:03:34
+ * @LastEditors: dongfangzhou 18746061711@163.com
+ * @LastEditTime: 2024-10-27 16:02:44
  * @FilePath: /minnow/src/tcp_sender.hh
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
  * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
@@ -29,9 +29,9 @@ public:
     : input_( std::move( input ) )
     , isn_( isn )
     , initial_RTO_ms_( initial_RTO_ms )
-    , countdown_RTO_ms_( initial_RTO_ms )
+    , curr_RTO_ms_( initial_RTO_ms )
+    , countdown_ms_( initial_RTO_ms )
     , last_ack_seqno_( isn_ )
-    , last_send_seqno_( isn_ )
   {}
 
   /* Generate an empty TCPSenderMessage */
@@ -64,13 +64,12 @@ private:
   // Variables initialized in constructor
   ByteStream input_;
   Wrap32 isn_;
-  uint64_t initial_RTO_ms_;
+  uint64_t initial_RTO_ms_, curr_RTO_ms_, countdown_ms_; // 初始rto, 当前rto
 
-  uint64_t countdown_RTO_ms_;                   // rto翻倍倒计时
-  std::map<uint64_t, uint64_t> seqno_timer_ {}; // 超时计时器，key为seq，value为已发送时间，tick后更新
-  bool isn_acked_ { false }, isn_sended_ { false }, ack_wrong_ { false }; // isn 是否被确认
-  Wrap32 last_ack_seqno_, last_send_seqno_;      // 最后收到的ack的seq号, 最后发送的seq号
-  uint64_t recv_window_size_ {}, bytes_send_ {}; // 接收窗口大小
+  Wrap32 last_ack_seqno_;        // 最后收到的ack的seq号, 最后发送的seq号
+  uint64_t recv_window_size_ {}; // 接收窗口大小
 
-  uint64_t consecutive_retrans_num_ {}; // 连续重传次数
+  std::deque<TCPSenderMessage> messages_in_flight_ {};     // 发送队列
+  bool retransmit_flag_ { false };                         // 重传标志
+  uint64_t consecutive_retrans_num_ {}, seqs_sent_len_ {}; // 连续重传次数, 已发送分组字节长度
 };

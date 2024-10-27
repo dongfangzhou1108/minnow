@@ -1,13 +1,14 @@
 /*
  * @Author: 18746061711@163.com 18746061711@163.com
  * @Date: 2024-10-22 11:04:52
- * @LastEditors: 18746061711@163.com 18746061711@163.com
- * @LastEditTime: 2024-10-25 16:39:26
+ * @LastEditors: dongfangzhou 18746061711@163.com
+ * @LastEditTime: 2024-10-27 17:46:44
  * @FilePath: /minnow/src/tcp_sender.cc
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
  * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 #include "tcp_sender.hh"
+#include "byte_stream.hh"
 #include "tcp_config.hh"
 
 using namespace std;
@@ -17,16 +18,17 @@ using namespace std;
  */
 uint64_t TCPSender::sequence_numbers_in_flight() const
 {
-  uint64_t res {}, bytes_acked {};
-  isn_acked_ ? ( bytes_acked = last_ack_seqno_.unwrap( isn_, bytes_send_ ) ) : ( bytes_acked = 0 );
-  res = bytes_send_ - bytes_acked;
+  uint64_t res { 0 };
+  for ( auto& msg : messages_in_flight_ ) {
+    res += msg.sequence_length();
+  }
   return res;
 }
 
 uint64_t TCPSender::consecutive_retransmissions() const
 {
   // Your code here.
-  return {};
+  return consecutive_retrans_num_;
 }
 
 /*
@@ -35,49 +37,53 @@ uint64_t TCPSender::consecutive_retransmissions() const
  */
 void TCPSender::push( const TransmitFunction& transmit )
 {
+  // 新消息逻辑
   TCPSenderMessage msg = make_empty_message();
-  if ( !isn_acked_ ) {
-    msg.SYN = true;
-    isn_sended_ = true;
-  }
 
   std::vector<uint64_t> v_ { TCPConfig::MAX_PAYLOAD_SIZE, input_.reader().bytes_buffered(), recv_window_size_ };
   std::sort( v_.begin(), v_.end() );
-  uint64_t bytes_can_send = v_[0];
+  uint64_t payload_size = v_[0];
 
-  // 如果无数据可发且还没有收到isn的ack，则不发送
-  if ( bytes_can_send == 0 && isn_acked_ )
+  if ( msg.FIN ) {
+    msg.payload = std::string { input_.reader().peek(), 0, payload_size };
+    if ( msg.sequence_length() <= recv_window_size_ ) {
+      msg.payload = "";
+    }
+    transmit( msg );
     return;
-  if ( ack_wrong_ )
-    return;
+  }
 
-  if ( bytes_can_send > 0 )
-    msg.payload = std::string { input_.reader().peek(), 0, bytes_can_send };
+  if ( payload_size + msg.sequence_length() > 0 ) {
+    msg.payload = std::string { input_.reader().peek(), 0, payload_size };
+    input_.reader().pop( payload_size );
+    recv_window_size_ -= payload_size;
+  } else
+    return;
 
   // 记录已发送字节
-  bytes_send_ += msg.sequence_length();
-  last_send_seqno_ = msg.seqno;
+  messages_in_flight_.push_back( msg );
+  seqs_sent_len_ += msg.sequence_length();
   transmit( msg );
 }
 
 /*
- * 主要对空消息的seqno进行处理
- * 构造一个空的segment，如果还没有收到ack，则seqno为isn
- * 因为消息empty，所以不对syn等标志赋值
+ * 如果还有outstanding segment，seqno 选择未发送的最小seqno
  */
 TCPSenderMessage TCPSender::make_empty_message() const
 {
   TCPSenderMessage msg {};
-  if ( !isn_sended_ ) {
-    msg.seqno = isn_;
-  } else if ( !isn_acked_ ) {
-    msg.seqno = isn_ + 1;
-  } else if ( last_send_seqno_ + 1 == last_ack_seqno_ ) {
-    msg.seqno = last_ack_seqno_;
+
+  if ( !messages_in_flight_.empty() ) {
+    msg.seqno = messages_in_flight_.back().seqno + messages_in_flight_.back().sequence_length();
   } else {
-    Wrap32 seqno { Wrap32::wrap( bytes_send_, isn_ ) };
-    msg.seqno = seqno;
+    msg.seqno = last_ack_seqno_;
   }
+
+  if ( msg.seqno == isn_ )
+    msg.SYN = true;
+  if ( input_.reader().is_finished() )
+    msg.FIN = true;
+
   return msg;
 }
 
@@ -87,29 +93,50 @@ TCPSenderMessage TCPSender::make_empty_message() const
  */
 void TCPSender::receive( const TCPReceiverMessage& msg )
 {
-  if ( !msg.ackno.has_value() ) {
-    ack_wrong_ = true;
-    return;
-  }
-  if ( last_ack_seqno_.unwrap( isn_, bytes_send_ ) >= msg.ackno.value().unwrap( isn_, bytes_send_ ) ) {
-    ack_wrong_ = true;
-    return;
-  }
+  // 计算最旧 outstanding segment 最后一个字节 seqno
+  auto calc_seqno = [this]() {
+    return messages_in_flight_.front().seqno.unwrap( isn_, seqs_sent_len_ )
+           + messages_in_flight_.front().sequence_length();
+  };
 
-  ack_wrong_ = false;
-  input_.reader().pop( msg.ackno.value().unwrap( isn_, bytes_send_ )
-                       - last_ack_seqno_.unwrap( isn_, bytes_send_ ) );
-  recv_window_size_ = msg.window_size;
+  if ( !msg.ackno.has_value() )
+    return;
+  if ( messages_in_flight_.empty() )
+    return;
+  if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) < calc_seqno() )
+    return;
+
   last_ack_seqno_ = msg.ackno.value();
+  recv_window_size_ = msg.window_size;
 
-  if ( last_ack_seqno_ != isn_ )
-    isn_acked_ = true;
+  retransmit_flag_ = false;
+  consecutive_retrans_num_ = 0;
+  curr_RTO_ms_ = initial_RTO_ms_;
+  countdown_ms_ = initial_RTO_ms_;
+
+  while ( !messages_in_flight_.empty() ) {
+    if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) >= calc_seqno() ) {
+      messages_in_flight_.pop_front();
+    } else {
+      break;
+    }
+  }
 }
 
 void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& transmit )
 {
-  // Your code here.
-  (void)ms_since_last_tick;
-  (void)transmit;
-  (void)initial_RTO_ms_;
+  if ( messages_in_flight_.empty() ) {
+    return;
+  }
+
+  if ( countdown_ms_ - ms_since_last_tick > 0 ) {
+    countdown_ms_ -= ms_since_last_tick;
+    return;
+  }
+
+  curr_RTO_ms_ *= 2;
+  countdown_ms_ = curr_RTO_ms_;
+  retransmit_flag_ = true;
+  consecutive_retrans_num_++;
+  transmit( messages_in_flight_.front() );
 }
