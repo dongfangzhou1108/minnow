@@ -2,7 +2,7 @@
  * @Author: 18746061711@163.com 18746061711@163.com
  * @Date: 2024-10-22 11:04:52
  * @LastEditors: dongfangzhou 18746061711@163.com
- * @LastEditTime: 2024-10-27 17:46:44
+ * @LastEditTime: 2024-10-28 22:14:28
  * @FilePath: /minnow/src/tcp_sender.cc
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
  * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
@@ -44,12 +44,14 @@ void TCPSender::push( const TransmitFunction& transmit )
   std::sort( v_.begin(), v_.end() );
   uint64_t payload_size = v_[0];
 
-  if ( msg.FIN ) {
+  if ( msg.FIN && FIN_ack_ ) {
     msg.payload = std::string { input_.reader().peek(), 0, payload_size };
-    if ( msg.sequence_length() <= recv_window_size_ ) {
+    if ( msg.sequence_length() >= recv_window_size_ ) {
       msg.payload = "";
     }
     transmit( msg );
+    return;
+  } else if ( msg.FIN && !FIN_ack_ ) {
     return;
   }
 
@@ -81,7 +83,7 @@ TCPSenderMessage TCPSender::make_empty_message() const
 
   if ( msg.seqno == isn_ )
     msg.SYN = true;
-  if ( input_.reader().is_finished() )
+  if ( input_.writer().is_closed() )
     msg.FIN = true;
 
   return msg;
@@ -103,7 +105,7 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
     return;
   if ( messages_in_flight_.empty() )
     return;
-  if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) < calc_seqno() )
+  if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) < calc_seqno() && !( input_.writer().is_closed() ) )
     return;
 
   last_ack_seqno_ = msg.ackno.value();
@@ -113,6 +115,11 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
   consecutive_retrans_num_ = 0;
   curr_RTO_ms_ = initial_RTO_ms_;
   countdown_ms_ = initial_RTO_ms_;
+
+  // 处理 FIN 确认
+  if ( input_.writer().is_closed() ) {
+    FIN_ack_ = true;
+  }
 
   while ( !messages_in_flight_.empty() ) {
     if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) >= calc_seqno() ) {
