@@ -1,8 +1,8 @@
 /*
  * @Author: 18746061711@163.com 18746061711@163.com
  * @Date: 2024-10-21 18:39:29
- * @LastEditors: dongfangzhou 18746061711@163.com
- * @LastEditTime: 2024-10-28 21:51:14
+ * @LastEditors: 18746061711@163.com 18746061711@163.com
+ * @LastEditTime: 2024-10-30 14:41:46
  * @FilePath: /minnow/src/tcp_sender.hh
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
  * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
@@ -69,7 +69,8 @@ private:
   Wrap32 last_ack_seqno_;        // 最后收到的ack的seq号, 最后发送的seq号
   uint64_t recv_window_size_ {}; // 接收窗口大小
 
-  std::deque<TCPSenderMessage> messages_in_flight_ {};     // 发送队列
-  bool retransmit_flag_ { false }, FIN_ack_ { false };     // 重传标志
+  std::deque<TCPSenderMessage> messages_in_flight_ {}; // 发送队列
+  bool retransmit_flag_ { false }, Close_ack_ { false }, Fin_ack_ { false },
+    Fin_sent_ { false };                                   // 重传标志, Close 后收到的 ack
   uint64_t consecutive_retrans_num_ {}, seqs_sent_len_ {}; // 连续重传次数, 已发送分组字节长度
 };

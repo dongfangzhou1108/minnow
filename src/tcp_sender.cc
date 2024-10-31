@@ -1,8 +1,8 @@
 /*
  * @Author: 18746061711@163.com 18746061711@163.com
  * @Date: 2024-10-22 11:04:52
- * @LastEditors: dongfangzhou 18746061711@163.com
- * @LastEditTime: 2024-10-28 22:14:28
+ * @LastEditors: 18746061711@163.com 18746061711@163.com
+ * @LastEditTime: 2024-10-31 14:33:34
  * @FilePath: /minnow/src/tcp_sender.cc
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
  * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
@@ -39,19 +39,38 @@ void TCPSender::push( const TransmitFunction& transmit )
 {
   // 新消息逻辑
   TCPSenderMessage msg = make_empty_message();
+  if ( msg.seqno == isn_ )
+    msg.SYN = true;
+  if ( input_.writer().is_closed() )
+    msg.FIN = true;
 
   std::vector<uint64_t> v_ { TCPConfig::MAX_PAYLOAD_SIZE, input_.reader().bytes_buffered(), recv_window_size_ };
   std::sort( v_.begin(), v_.end() );
   uint64_t payload_size = v_[0];
 
-  if ( msg.FIN && FIN_ack_ ) {
-    msg.payload = std::string { input_.reader().peek(), 0, payload_size };
-    if ( msg.sequence_length() >= recv_window_size_ ) {
-      msg.payload = "";
-    }
-    transmit( msg );
+  if ( Fin_ack_ )
     return;
-  } else if ( msg.FIN && !FIN_ack_ ) {
+
+  if ( msg.FIN && Close_ack_ ) {
+    // FIN not acked test
+    if ( Fin_sent_ )
+      return;
+
+    msg.payload = std::string { input_.reader().peek(), 0, payload_size };
+
+    // SYN + FIN & Don't add FIN if this would make the segment exceed the receiver's window
+    if ( msg.sequence_length() > payload_size && payload_size == recv_window_size_ && payload_size != 0 )
+      msg.FIN = false;
+    if ( sequence_numbers_in_flight() + msg.sequence_length() > recv_window_size_ )
+      return;
+  } else if ( msg.FIN && !Close_ack_ && !messages_in_flight_.empty() && recv_window_size_ == 0 ) {
+    return;
+  } else if ( msg.FIN && !Close_ack_ && messages_in_flight_.empty() ) {
+    msg.seqno = last_ack_seqno_;
+    msg.payload = std::string { input_.reader().peek(), 0, payload_size }; // FIN with data
+    messages_in_flight_.push_back( msg );
+    Fin_sent_ = true;
+    transmit( msg );
     return;
   }
 
@@ -65,7 +84,12 @@ void TCPSender::push( const TransmitFunction& transmit )
   // 记录已发送字节
   messages_in_flight_.push_back( msg );
   seqs_sent_len_ += msg.sequence_length();
+  if ( msg.FIN )
+    Fin_sent_ = true;
   transmit( msg );
+
+  if ( recv_window_size_ > 0 && input_.reader().bytes_buffered() > 0 )
+    push( transmit );
 }
 
 /*
@@ -80,11 +104,6 @@ TCPSenderMessage TCPSender::make_empty_message() const
   } else {
     msg.seqno = last_ack_seqno_;
   }
-
-  if ( msg.seqno == isn_ )
-    msg.SYN = true;
-  if ( input_.writer().is_closed() )
-    msg.FIN = true;
 
   return msg;
 }
@@ -101,11 +120,20 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
            + messages_in_flight_.front().sequence_length();
   };
 
+  // 计算最新 outstanding segment 最后一个字节 seqno
+  auto calc_seqno_max = [this]() {
+    return messages_in_flight_.back().seqno.unwrap( isn_, seqs_sent_len_ )
+           + messages_in_flight_.back().sequence_length();
+  };
+
   if ( !msg.ackno.has_value() )
     return;
   if ( messages_in_flight_.empty() )
     return;
   if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) < calc_seqno() && !( input_.writer().is_closed() ) )
+    return;
+  // credit for test: Jared Wasserman (2020)
+  if ( msg.ackno.value().unwrap( isn_, seqs_sent_len_ ) > calc_seqno_max() )
     return;
 
   last_ack_seqno_ = msg.ackno.value();
@@ -118,7 +146,7 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
 
   // 处理 FIN 确认
   if ( input_.writer().is_closed() ) {
-    FIN_ack_ = true;
+    Close_ack_ = true;
   }
 
   while ( !messages_in_flight_.empty() ) {
@@ -128,6 +156,9 @@ void TCPSender::receive( const TCPReceiverMessage& msg )
       break;
     }
   }
+
+  if ( Close_ack_ && messages_in_flight_.empty() && Fin_sent_ )
+    Fin_ack_ = true;
 }
 
 void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& transmit )
@@ -136,7 +167,7 @@ void TCPSender::tick( uint64_t ms_since_last_tick, const TransmitFunction& trans
     return;
   }
 
-  if ( countdown_ms_ - ms_since_last_tick > 0 ) {
+  if ( countdown_ms_ > ms_since_last_tick ) {
     countdown_ms_ -= ms_since_last_tick;
     return;
   }
