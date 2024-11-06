@@ -71,6 +71,7 @@ private:
 
   std::deque<TCPSenderMessage> messages_in_flight_ {}; // 发送队列
   bool retransmit_flag_ { false }, Close_ack_ { false }, Fin_ack_ { false },
-    Fin_sent_ { false };                                   // 重传标志, Close 后收到的 ack
+    Fin_sent_ { false }; // 重传标志, Close 后收到的 ack
+  bool recv_win_zero_ { false }, send_win_zero_ { false };
   uint64_t consecutive_retrans_num_ {}, seqs_sent_len_ {}; // 连续重传次数, 已发送分组字节长度
 };
