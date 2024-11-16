@@ -1,3 +1,11 @@
+/*
+ * @Author: DFZ 18746061711@163.com
+ * @Date: 2024-11-16 14:08:06
+ * @LastEditors: DFZ 18746061711@163.com
+ * @LastEditTime: 2024-11-16 16:07:09
+ * @FilePath: /minnow/src/network_interface.cc
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #include <iostream>
 
 #include "arp_message.hh"
@@ -27,21 +35,34 @@ NetworkInterface::NetworkInterface( string_view name,
 //! can be converted to a uint32_t (raw 32-bit IP address) by using the Address::ipv4_numeric() method.
 void NetworkInterface::send_datagram( const InternetDatagram& dgram, const Address& next_hop )
 {
-  // Your code here.
-  (void)dgram;
-  (void)next_hop;
+  /*
+	 * 如果能够识别next_hop的MAC地址
+	 * 	则直接发送数据包
+	 * 否则
+	 * 	发送ARP请求（相同IP在5S内不允许重复发送）
+	 *  维护待发送消息&IP
+	 */
+
+	EthernetFrame frame;
 }
 
 //! \param[in] frame the incoming Ethernet frame
 void NetworkInterface::recv_frame( const EthernetFrame& frame )
 {
-  // Your code here.
-  (void)frame;
+	/*
+	 * 如果 IPV4 数据包
+	 * 	推送数据队列并维护
+	 * 否则，如果 ARP 请求
+	 * 	发送 ARP 响应（实验中默认得到正确回复）
+	 * 否则，如果 ARP 响应
+	 * 	维护 ARP 缓存
+	 */
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void NetworkInterface::tick( const size_t ms_since_last_tick )
 {
-  // Your code here.
-  (void)ms_since_last_tick;
+	/*
+	 * 维护 ARP 缓存（最长维护时间30S）
+	 */
 }

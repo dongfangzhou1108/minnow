@@ -1,5 +1,15 @@
+/*
+ * @Author: DFZ 18746061711@163.com
+ * @Date: 2024-11-16 14:08:06
+ * @LastEditors: DFZ 18746061711@163.com
+ * @LastEditTime: 2024-11-16 16:17:17
+ * @FilePath: /minnow/src/network_interface.hh
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
+ * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #pragma once
 
+#include <map>
 #include <queue>
 
 #include "address.hh"
@@ -8,6 +18,7 @@
 
 // A "network interface" that connects IP (the internet layer, or network layer)
 // with Ethernet (the network access layer, or link layer).
+// 网络接口，连接IP层和链路层
 
 // This module is the lowest layer of a TCP/IP stack
 // (connecting IP with the lower-layer network protocol,
@@ -15,6 +26,7 @@
 // as part of a router: a router generally has many network
 // interfaces, and the router's job is to route Internet datagrams
 // between the different interfaces.
+// TCP/IP协议栈的最底层，路由器通常有多个网络接口
 
 // The network interface translates datagrams (coming from the
 // "customer," e.g. a TCP/IP stack or router) into Ethernet
@@ -27,6 +39,10 @@
 // the network interface passes it up the stack. If it's an ARP
 // request or reply, the network interface processes the frame
 // and learns or replies as necessary.
+// 将IP数据报封装成以太网帧，并将其发送出去。
+// 如果需要，则使用ARP协议查询下一跳的以太网地址。
+// 接收到以太网帧后，如果是IPv4数据报，则将其上交给TCP/IP协议栈。
+// 如果是ARP请求或应答，则处理该帧并更新ARP表。
 class NetworkInterface
 {
 public:
@@ -81,4 +97,9 @@ private:
 
   // Datagrams that have been received
   std::queue<InternetDatagram> datagrams_received_ {};
+
+  // 维护已发送ARP请求但是未接收ARP应答的IPv4数据报，pair维护IP地址和发送时间
+  std::map<uint32_t, uint32_t> IPV4_ARPing_ {};
+  // 维护已接收ARP应答IPv4数据报，pair维护MAC地址和时间
+  std::map<uint32_t, std::pair<EthernetAddress, uint32_t>> IPV4_ARPed_ {};
 };
