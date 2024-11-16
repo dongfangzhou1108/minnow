@@ -1,10 +1,20 @@
+/*
+ * @Author: DFZ 18746061711@163.com
+ * @Date: 2024-11-16 14:08:06
+ * @LastEditors: DFZ 18746061711@163.com
+ * @LastEditTime: 2024-11-16 14:22:51
+ * @FilePath: /minnow/apps/webget.cc
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
+ * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #include "socket.hh"
 
 #include <cstdlib>
 #include <iostream>
 #include <span>
 #include <string>
-#include <sys/socket.h>
+// #include <sys/socket.h>
+#include "../util/tcp_minnow_socket.hh"
 
 using namespace std;
 

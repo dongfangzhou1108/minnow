@@ -4,7 +4,7 @@
 	],
 	"cmake.buildArgs": [
 		"--target format",
-		"--target check3"
+		"--target check_webget",
 	],
 	"editor.fontSize": 18,
 	"files.associations": {
