@@ -2,7 +2,7 @@
  * @Author: DFZ 18746061711@163.com
  * @Date: 2024-11-16 14:08:06
  * @LastEditors: DFZ 18746061711@163.com
- * @LastEditTime: 2024-11-16 16:17:17
+ * @LastEditTime: 2024-11-18 14:06:59
  * @FilePath: /minnow/src/network_interface.hh
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置:
  * https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
@@ -102,4 +102,6 @@ private:
   std::map<uint32_t, uint32_t> IPV4_ARPing_ {};
   // 维护已接收ARP应答IPv4数据报，pair维护MAC地址和时间
   std::map<uint32_t, std::pair<EthernetAddress, uint32_t>> IPV4_ARPed_ {};
+  // 等待ARP应答的链路层报文
+  std::map<uint32_t, std::queue<EthernetFrame>> packets_to_send_ {};
 };
